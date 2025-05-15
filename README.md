@@ -2,8 +2,7 @@
 # AI-Powered Resume Checker with Crew AI
 
 This project implements an AI-powered resume checker using Crew AI agents to analyze resumes against job requirements, provide feedback, and generate improved versions optimized for ATS systems.
-
-![Resume Checker Screenshot](https://via.placeholder.com/800x450.png?text=AI+Resume+Checker)
+<img width="668" alt="Screenshot 2025-05-16 at 12 13 33 AM" src="https://github.com/user-attachments/assets/6a2e08f0-5a42-4196-9596-b315f7ff1e2c" />
 
 ## Features
 
