@@ -1,0 +1,77 @@
+
+# {{ resume.name | upper if resume.name else 'PROFESSIONAL RESUME' }}
+
+{% if resume.contact_info %}
+{{ resume.contact_info.email if resume.contact_info.email else '' }} | {{ resume.contact_info.phone if resume.contact_info.phone else '' }}
+{% if resume.contact_info.linkedin %}{{ resume.contact_info.linkedin }}{% endif %} | {{ resume.contact_info.location if resume.contact_info.location else '' }}
+{% endif %}
+
+## PROFESSIONAL SUMMARY
+
+Results-driven professional with significant experience in {{ resume.experience[0].title if resume.experience else 'the field' }}. Proven track record of {% if resume.experience and resume.experience[0].description %}{{ resume.experience[0].description | truncate(100) | replace('\n', ' ') }}{% else %}delivering high-quality results and meeting objectives{% endif %}. {% if matching_skills %}Skilled in {{ matching_skills | join(', ') }}{% endif %}{% if missing_skills %} with growing expertise in {{ missing_skills | join(', ') }}{% endif %}.
+
+## SKILLS
+
+{% if matching_skills %}
+**Core Skills:** {{ matching_skills | join(', ') }}
+{% endif %}
+
+{% if extra_skills %}
+**Additional Skills:** {{ extra_skills | join(', ') }}
+{% endif %}
+
+{% if missing_skills %}
+**Developing Skills:** {{ missing_skills | join(', ') }}
+{% endif %}
+
+## PROFESSIONAL EXPERIENCE
+
+{% for job in resume.experience %}
+### {{ job.title | upper }} | {{ job.company | upper }}
+*{{ job.date_range }}*
+
+{% set description_lines = job.description.split('\n') %}
+{% for line in description_lines %}
+{% if line.strip() %}
+- {{ line | trim | replace('•', '') | trim | capitalize }}{% if loop.index == 1 %} {% if score.matching_skills[0] is defined %}Leveraged {{ score.matching_skills[0] }}{% endif %} to deliver measurable results.{% endif %}
+{% endif %}
+{% endfor %}
+
+{% endfor %}
+
+## EDUCATION
+
+{% for edu in resume.education %}
+### {{ edu.degree | upper }} {% if edu.field_of_study %}IN {{ edu.field_of_study | upper }}{% endif %}
+*{{ edu.institution }}{% if edu.date_range %} | {{ edu.date_range }}{% endif %}*
+
+{% endfor %}
+
+{% if resume.skills %}
+## TECHNICAL PROFICIENCIES
+
+{% set skill_groups = {'Programming': [], 'Tools': [], 'Platforms': [], 'Other': []} %}
+{% for skill in resume.skills %}
+{% if skill | lower in ['python', 'java', 'javascript', 'c++', 'ruby', 'php', 'sql', 'html', 'css'] %}
+{% do skill_groups.Programming.append(skill) %}
+{% elif skill | lower in ['git', 'docker', 'kubernetes', 'jenkins', 'aws', 'azure'] %}
+{% do skill_groups.Platforms.append(skill) %}
+{% elif skill | lower in ['jira', 'slack', 'excel', 'word', 'powerpoint', 'photoshop'] %}
+{% do skill_groups.Tools.append(skill) %}
+{% else %}
+{% do skill_groups.Other.append(skill) %}
+{% endif %}
+{% endfor %}
+
+{% for group_name, skills in skill_groups.items() %}
+{% if skills %}
+**{{ group_name }}:** {{ skills | join(', ') }}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+## CERTIFICATIONS & ADDITIONAL TRAINING
+
+- [Include any certifications or additional training relevant to the job]
+
+*This resume has been optimized for ATS systems while highlighting the most relevant skills and experiences for the target position.*

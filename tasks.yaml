@@ -1,0 +1,108 @@
+
+# Resume Checker Crew AI Configuration
+version: "1"
+
+agents:
+  # Agent responsible for parsing and extracting information from resumes
+  ResumeParser:
+    role: "Resume Parser"
+    goal: "Parse resumes efficiently and extract all relevant information"
+    backstory: "An expert in document parsing and NLP, with specialized knowledge in resume formats"
+    allow_delegation: true
+    verbose: true
+    human_input_mode: "NEVER"
+    llm:
+      provider: "openai"
+      model: "gpt-4o-mini"
+      temperature: 0.1
+      max_tokens: 4000
+    memory:
+      max_messages: 50
+
+  # Agent responsible for scoring resumes against job requirements
+  ResumeScorer:
+    role: "Resume Evaluator"
+    goal: "Calculate accurate matching scores between resumes and job requirements"
+    backstory: "A meticulous analyst with expertise in matching candidate qualifications to job requirements"
+    allow_delegation: true
+    verbose: true
+    human_input_mode: "NEVER"
+    llm:
+      provider: "openai"
+      model: "gpt-4o-mini"
+      temperature: 0.1
+      max_tokens: 2000
+    memory:
+      max_messages: 30
+
+  # Agent responsible for providing feedback and improving resumes
+  ResumeImprover:
+    role: "Resume Improvement Specialist"
+    goal: "Provide actionable feedback and polished rewrites that improve candidate success rates"
+    backstory: "A career counselor and writer with deep knowledge of what recruiters look for in resumes"
+    allow_delegation: true
+    verbose: true
+    human_input_mode: "NEVER"
+    llm:
+      provider: "openai"
+      model: "gpt-4o-mini"
+      temperature: 0.7
+      max_tokens: 8000
+    memory:
+      max_messages: 20
+
+tasks:
+  # ResumeParser tasks
+  load_resume:
+    agent: "ResumeParser"
+    description: "Load a resume file (PDF or DOCX) and prepare it for text extraction"
+    expected_output: "Raw binary data of the resume file"
+
+  extract_text:
+    agent: "ResumeParser"
+    description: "Convert resume file to raw text"
+    expected_output: "Plain text content of the resume"
+    depends_on: "load_resume"
+
+  parse_entities:
+    agent: "ResumeParser"
+    description: "Extract structured information from resume text using NLP"
+    expected_output: "JSON object with parsed resume data (contact info, education, skills, etc.)"
+    depends_on: "extract_text"
+
+  # ResumeScorer tasks
+  fetch_job:
+    agent: "ResumeScorer"
+    description: "Retrieve job requirements from external API"
+    expected_output: "JSON object with job requirements data"
+
+  compute_score:
+    agent: "ResumeScorer"
+    description: "Calculate weighted fit score between resume and job requirements"
+    expected_output: "JSON object with overall and component scores"
+    depends_on: ["parse_entities", "fetch_job"]
+
+  # ResumeImprover tasks
+  generate_feedback:
+    agent: "ResumeImprover"
+    description: "Generate detailed feedback on resume strengths, weaknesses, and ATS compatibility"
+    expected_output: "Structured feedback text with actionable recommendations"
+    depends_on: ["parse_entities", "compute_score"]
+
+  rewrite_resume:
+    agent: "ResumeImprover"
+    description: "Produce a polished, ATS-optimized version of the resume"
+    expected_output: "Plain text of improved resume"
+    depends_on: ["parse_entities", "compute_score", "generate_feedback"]
+
+workflows:
+  resume_check:
+    description: "Complete resume evaluation workflow"
+    tasks:
+      - load_resume
+      - extract_text
+      - parse_entities
+      - fetch_job
+      - compute_score
+      - generate_feedback
+      - rewrite_resume
