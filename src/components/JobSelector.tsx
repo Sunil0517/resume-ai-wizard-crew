@@ -1,12 +1,11 @@
-
 import { SelectValue, SelectTrigger, SelectItem, SelectContent, Select } from "@/components/ui/select";
 
 interface JobSelectorProps {
   selectedJob: string;
-  setSelectedJob: (jobId: string) => void;
+  onJobChange: (jobId: string) => void;
 }
 
-export const JobSelector = ({ selectedJob, setSelectedJob }: JobSelectorProps) => {
+export const JobSelector = ({ selectedJob, onJobChange }: JobSelectorProps) => {
   const jobs = [
     { id: "job1", title: "Senior Software Engineer" },
     { id: "job2", title: "Data Scientist" },
@@ -16,7 +15,7 @@ export const JobSelector = ({ selectedJob, setSelectedJob }: JobSelectorProps) =
   return (
     <div className="space-y-4">
       <label className="block text-sm font-medium">Select Job Position</label>
-      <Select value={selectedJob} onValueChange={setSelectedJob}>
+      <Select value={selectedJob} onValueChange={onJobChange}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="Select a job position" />
         </SelectTrigger>

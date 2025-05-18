@@ -1,14 +1,13 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 interface ImprovedResumeProps {
-  resumeText: string;
+  content: string;
 }
 
-export const ImprovedResume = ({ resumeText }: ImprovedResumeProps) => {
+export const ImprovedResume = ({ content }: ImprovedResumeProps) => {
   const { toast } = useToast();
   
   // Function to convert markdown to HTML (very basic)
@@ -31,7 +30,7 @@ export const ImprovedResume = ({ resumeText }: ImprovedResumeProps) => {
   };
 
   const copyResume = () => {
-    navigator.clipboard.writeText(resumeText);
+    navigator.clipboard.writeText(content);
     toast({
       title: "Copied!",
       description: "Improved resume copied to clipboard"
@@ -40,7 +39,7 @@ export const ImprovedResume = ({ resumeText }: ImprovedResumeProps) => {
 
   const downloadResume = () => {
     const element = document.createElement("a");
-    const file = new Blob([resumeText], {type: "text/plain"});
+    const file = new Blob([content], {type: "text/plain"});
     element.href = URL.createObjectURL(file);
     element.download = "improved_resume.txt";
     document.body.appendChild(element);
@@ -70,7 +69,7 @@ export const ImprovedResume = ({ resumeText }: ImprovedResumeProps) => {
         <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
           <div 
             className="prose prose-sm max-w-none font-mono whitespace-pre-line" 
-            dangerouslySetInnerHTML={{ __html: markdownToHtml(resumeText) }}
+            dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }}
           />
         </div>
       </CardContent>

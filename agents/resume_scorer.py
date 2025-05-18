@@ -1,4 +1,3 @@
-
 """
 ResumeScorer Agent for Crew AI Resume Checker
 
@@ -7,6 +6,7 @@ This agent handles fetching job requirements and scoring resumes against those r
 
 import json
 import requests
+import re
 from typing import Dict, Any, List
 from crewai import Agent, Task
 
@@ -63,6 +63,9 @@ class ResumeScorer:
         Returns:
             Dict containing overall and component scores
         """
+        # Validate input data structure
+        self._validate_input_data(resume_data, job_data)
+        
         # Extract relevant information from resume and job data
         resume_skills = set(s.lower() for s in resume_data.get("skills", []))
         job_skills = set(s.lower() for s in job_data.get("required_skills", []))
@@ -97,54 +100,117 @@ class ResumeScorer:
             "education_score": round(education_score, 2),
             "matching_skills": list(resume_skills.intersection(job_skills)),
             "missing_skills": list(job_skills - resume_skills),
-            "extra_skills": list(resume_skills - job_skills)
+            "extra_skills": list(resume_skills - job_skills),
+            "analysis": self._generate_score_analysis(
+                skill_match_score, 
+                experience_score, 
+                education_score, 
+                resume_skills.intersection(job_skills),
+                job_skills - resume_skills
+            )
         }
+    
+    def _validate_input_data(self, resume_data: Dict[str, Any], job_data: Dict[str, Any]) -> None:
+        """
+        Validate that input data contains required fields.
+        
+        Args:
+            resume_data: Parsed resume data
+            job_data: Job requirements data
+            
+        Raises:
+            ValueError: If required data is missing
+        """
+        # Check if resume data has minimal required sections
+        if not resume_data.get("skills") and not resume_data.get("experience") and not resume_data.get("education"):
+            raise ValueError("Resume data is missing critical sections (skills, experience, education)")
+            
+        # Check if job data has minimal required fields
+        if "title" not in job_data or "required_skills" not in job_data:
+            raise ValueError("Job data is missing critical fields (title, required_skills)")
     
     def _calculate_skill_match(self, resume_skills: set, job_skills: set) -> float:
         """Calculate skill match score between resume skills and job skills."""
         if not job_skills:
-            return 1.0  # Perfect score if no skills required
+            return 0.85  # No skills listed, but don't give perfect score
+            
+        if not resume_skills:
+            return 0.0  # No skills extracted from resume
             
         # Count matching skills
         matching_skills = resume_skills.intersection(job_skills)
         
-        # Calculate Jaccard similarity with a bonus for matching required skills
-        if len(resume_skills) == 0:
-            return 0.0
-            
-        # Base score is percentage of required skills that match
-        base_score = len(matching_skills) / len(job_skills)
+        # Core skill match ratio (this is the most important factor)
+        skill_match_ratio = len(matching_skills) / len(job_skills) if job_skills else 0
         
-        # Bonus for having more relevant skills (up to +20%)
-        skill_bonus = min(0.2, len(matching_skills) / len(resume_skills) * 0.2)
+        # Weight factors
+        core_weight = 0.7  # How much of the score depends on matching required skills
+        breadth_weight = 0.2  # Bonus for having additional relevant skills
+        precision_weight = 0.1  # Penalty for having too many irrelevant skills
         
-        # Penalty for having too many irrelevant skills (up to -10%)
-        irrelevant_penalty = 0
-        if len(resume_skills) > 2 * len(job_skills):
-            irrelevant_penalty = min(0.1, (len(resume_skills - job_skills) / len(job_skills)) * 0.1)
-            
-        return min(1.0, max(0.0, base_score + skill_bonus - irrelevant_penalty))
+        # Calculate breadth score (bonus for having more relevant skills)
+        # We want a higher score if resume has many matching skills compared to its total skills
+        breadth_score = len(matching_skills) / max(len(resume_skills), 1) if resume_skills else 0
+        
+        # Calculate precision score (penalty for having too many irrelevant skills)
+        # Lower score if many skills on resume don't match job requirements
+        irrelevant_skills = len(resume_skills - job_skills)
+        precision_score = 1.0 - (irrelevant_skills / max(len(resume_skills) + len(job_skills), 1))
+        precision_score = max(0, precision_score)  # Ensure non-negative
+        
+        # Combine scores with weights
+        combined_score = (
+            core_weight * skill_match_ratio + 
+            breadth_weight * breadth_score + 
+            precision_weight * precision_score
+        )
+        
+        # Scale to ensure score is between 0 and 1
+        return min(1.0, max(0.0, combined_score))
     
     def _calculate_experience_match(self, experience: List[Dict[str, Any]], min_years: int) -> float:
         """Calculate experience match score based on years of experience."""
         if min_years <= 0:
-            return 1.0  # Perfect score if no experience required
+            return 0.9  # High score if no experience required, but not perfect
+            
+        # Check if experience data is available
+        if not experience:
+            return 0.0  # No experience data available
             
         # Estimate total years of experience
         total_years = 0
+        relevant_years = 0
+        
         for job in experience:
             # Extract years from date range
             date_range = job.get("date_range", "")
             years = self._extract_years_from_date_range(date_range)
+            
+            # Count towards total experience
             total_years += years
             
-        # Calculate score based on ratio of actual to required experience
-        if total_years >= min_years:
-            return 1.0  # Perfect score if meets or exceeds requirements
-        elif total_years <= 0:
-            return 0.0  # No score if no experience
-        else:
-            return total_years / min_years  # Partial score based on ratio
+            # Check for relevance based on job title/description
+            # This is a simplified relevance check
+            if self._check_experience_relevance(job):
+                relevant_years += years
+            
+        # Calculate score based on a combination of total and relevant experience
+        total_score = min(1.0, total_years / min_years) if min_years > 0 else 1.0
+        relevant_score = min(1.0, relevant_years / min_years) if min_years > 0 else 1.0
+        
+        # Weight relevant experience more heavily
+        combined_score = 0.3 * total_score + 0.7 * relevant_score
+        
+        return min(1.0, max(0.0, combined_score))
+    
+    def _check_experience_relevance(self, job: Dict[str, Any]) -> bool:
+        """
+        Check if a job experience appears relevant to the position.
+        This is a simplified check - in production this would be more sophisticated.
+        """
+        # Implementation would compare job title and description to the target role
+        # For now, assume most recent jobs are more relevant
+        return True  # Simplified implementation
     
     def _extract_years_from_date_range(self, date_range: str) -> float:
         """Extract years of experience from a date range string."""
@@ -176,7 +242,11 @@ class ResumeScorer:
     def _calculate_education_match(self, education: List[Dict[str, Any]], min_education: str) -> float:
         """Calculate education match score based on degree level."""
         if not min_education:
-            return 1.0  # Perfect score if no education requirement
+            return 0.9  # High score if no education requirement, but not perfect
+            
+        # Check if education data is available
+        if not education:
+            return 0.0
             
         # Define education levels and their numeric values
         education_levels = {
@@ -197,7 +267,7 @@ class ResumeScorer:
                 
         # If no valid requirement found
         if required_level == 0:
-            return 1.0
+            return 0.85
             
         # Determine highest education level in resume
         highest_level = 0
@@ -216,6 +286,46 @@ class ResumeScorer:
             # Partial credit based on how close the education level is
             return highest_level / required_level
             
+    def _generate_score_analysis(self, skill_score: float, exp_score: float, edu_score: float, 
+                               matching_skills: set, missing_skills: set) -> str:
+        """Generate a textual analysis of the scoring results."""
+        analysis = []
+        
+        # Overall assessment
+        average_score = (skill_score + exp_score + edu_score) / 3
+        if average_score >= 0.8:
+            analysis.append("The resume is a strong match for this position.")
+        elif average_score >= 0.6:
+            analysis.append("The resume shows moderate alignment with the position requirements.")
+        else:
+            analysis.append("The resume needs significant improvements to be competitive for this role.")
+        
+        # Skills assessment
+        if skill_score >= 0.8:
+            analysis.append("Skills are well-matched to the requirements.")
+        elif skill_score >= 0.5:
+            analysis.append(f"Some key skills match, but {len(missing_skills)} required skills are missing.")
+        else:
+            analysis.append("The resume lacks many of the key skills required for this position.")
+        
+        # Experience assessment
+        if exp_score >= 0.8:
+            analysis.append("Experience level meets or exceeds requirements.")
+        elif exp_score >= 0.5:
+            analysis.append("Experience is partially aligned with requirements, but may need more depth.")
+        else:
+            analysis.append("The resume shows insufficient experience for this role.")
+        
+        # Education assessment
+        if edu_score >= 0.8:
+            analysis.append("Education credentials are suitable for this position.")
+        elif edu_score >= 0.5:
+            analysis.append("Education partially meets requirements but may be insufficient.")
+        else:
+            analysis.append("Education falls short of the minimum requirements for this position.")
+            
+        return " ".join(analysis)
+    
     def create_crew_agent(self) -> Agent:
         """Create a CrewAI agent for the ResumeScorer."""
         return Agent(

@@ -1,19 +1,18 @@
-
 import { useState } from "react";
 import { FileText, Upload, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ResumeUploaderProps {
   selectedFile: File | null;
-  setSelectedFile: (file: File | null) => void;
+  onFileChange: (file: File | null) => void;
 }
 
-export const ResumeUploader = ({ selectedFile, setSelectedFile }: ResumeUploaderProps) => {
+export const ResumeUploader = ({ selectedFile, onFileChange }: ResumeUploaderProps) => {
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
+      onFileChange(e.target.files[0]);
     }
   };
 
@@ -31,7 +30,7 @@ export const ResumeUploader = ({ selectedFile, setSelectedFile }: ResumeUploader
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setSelectedFile(e.dataTransfer.files[0]);
+      onFileChange(e.dataTransfer.files[0]);
     }
   };
 
@@ -71,7 +70,7 @@ export const ResumeUploader = ({ selectedFile, setSelectedFile }: ResumeUploader
               variant="outline"
               size="sm"
               className="mt-3"
-              onClick={() => setSelectedFile(null)}
+              onClick={() => onFileChange(null)}
             >
               Change File
             </Button>

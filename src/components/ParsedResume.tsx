@@ -1,9 +1,8 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ParsedResumeProps {
-  resume: {
+  data: {
     name: string;
     contact_info: {
       email: string;
@@ -27,7 +26,7 @@ interface ParsedResumeProps {
   };
 }
 
-export const ParsedResume = ({ resume }: ParsedResumeProps) => {
+export const ParsedResume = ({ data }: ParsedResumeProps) => {
   return (
     <Card>
       <CardHeader>
@@ -46,39 +45,39 @@ export const ParsedResume = ({ resume }: ParsedResumeProps) => {
             <div className="space-y-3">
               <div>
                 <h3 className="font-semibold">Name</h3>
-                <p>{resume.name}</p>
+                <p>{data.name}</p>
               </div>
-              {resume.contact_info.email && (
+              {data.contact_info.email && (
                 <div>
                   <h3 className="font-semibold">Email</h3>
-                  <p>{resume.contact_info.email}</p>
+                  <p>{data.contact_info.email}</p>
                 </div>
               )}
-              {resume.contact_info.phone && (
+              {data.contact_info.phone && (
                 <div>
                   <h3 className="font-semibold">Phone</h3>
-                  <p>{resume.contact_info.phone}</p>
+                  <p>{data.contact_info.phone}</p>
                 </div>
               )}
-              {resume.contact_info.linkedin && (
+              {data.contact_info.linkedin && (
                 <div>
                   <h3 className="font-semibold">LinkedIn</h3>
-                  <p>{resume.contact_info.linkedin}</p>
+                  <p>{data.contact_info.linkedin}</p>
                 </div>
               )}
-              {resume.contact_info.location && (
+              {data.contact_info.location && (
                 <div>
                   <h3 className="font-semibold">Location</h3>
-                  <p>{resume.contact_info.location}</p>
+                  <p>{data.contact_info.location}</p>
                 </div>
               )}
             </div>
           </TabsContent>
           
           <TabsContent value="experience">
-            {resume.experience.length > 0 ? (
+            {data.experience.length > 0 ? (
               <div className="space-y-6">
-                {resume.experience.map((job, index) => (
+                {data.experience.map((job, index) => (
                   <div key={index} className="space-y-2 border-b pb-4 last:border-0">
                     <h3 className="font-semibold">{job.title}</h3>
                     <div className="flex justify-between text-sm">
@@ -95,9 +94,9 @@ export const ParsedResume = ({ resume }: ParsedResumeProps) => {
           </TabsContent>
           
           <TabsContent value="education">
-            {resume.education.length > 0 ? (
+            {data.education.length > 0 ? (
               <div className="space-y-4">
-                {resume.education.map((edu, index) => (
+                {data.education.map((edu, index) => (
                   <div key={index} className="space-y-1">
                     <h3 className="font-semibold">{edu.degree}</h3>
                     <p>{edu.institution}</p>
@@ -116,9 +115,9 @@ export const ParsedResume = ({ resume }: ParsedResumeProps) => {
           </TabsContent>
           
           <TabsContent value="skills">
-            {resume.skills.length > 0 ? (
+            {data.skills.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {resume.skills.map((skill, index) => (
+                {data.skills.map((skill, index) => (
                   <span 
                     key={index} 
                     className="bg-primary-100 text-primary-800 px-3 py-1 rounded-full text-sm"

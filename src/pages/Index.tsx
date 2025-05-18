@@ -1,4 +1,3 @@
-
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +11,7 @@ import { FeedbackCard } from "@/components/FeedbackCard";
 import { ImprovedResume } from "@/components/ImprovedResume";
 import { ParsedResume } from "@/components/ParsedResume";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import JobRolesManager from "@/components/JobRolesManager";
 
 const Index = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -19,6 +19,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [result, setResult] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<string>("standard-jobs");
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -43,10 +44,11 @@ const Index = () => {
     formData.append("job_id", selectedJob);
 
     try {
-      // Send request to backend
-      // For demo purposes, we'll simulate the API call with mock data
-      // In production, replace with actual API call:
-      // const response = await fetch("/api/check-resume", {
+      // Determine which API endpoint to use based on job ID source
+      const endpoint = selectedJob.startsWith("custom-") ? "/api/check-resume" : "/api/check-resume";
+      
+      // In a real application, make the actual API call
+      // const response = await fetch(endpoint, {
       //   method: "POST",
       //   body: formData,
       // });
@@ -196,139 +198,139 @@ const Index = () => {
     };
   };
 
-  const resetForm = () => {
-    setSelectedFile(null);
-    setResult(null);
-    if (formRef.current) {
-      formRef.current.reset();
-    }
+  // Handle selection of a custom job role
+  const handleSelectCustomJob = (jobId: string) => {
+    setSelectedJob(jobId);
+    setActiveTab("standard-jobs"); // Switch back to the main tab after selection
+    
+    toast({
+      title: "Custom Job Selected",
+      description: `Using your custom job role for resume analysis.`,
+    });
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold text-primary mb-3">AI Resume Checker</h1>
-        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Upload your resume and we'll analyze it against job requirements, provide feedback, 
-          and generate an improved version optimized for ATS systems.
-        </p>
+    <div className="container mx-auto py-8">
+      <h1 className="text-3xl font-bold mb-8 text-center">AI Resume Checker</h1>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-8">
+            <ResumeUploader 
+              selectedFile={selectedFile} 
+              onFileChange={(file) => setSelectedFile(file)} 
+            />
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Step 2: Select Job</CardTitle>
+                <CardDescription>
+                  Choose a job to match your resume against
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Tabs value={activeTab} onValueChange={setActiveTab}>
+                  <TabsList className="w-full">
+                    <TabsTrigger value="standard-jobs">Standard Jobs</TabsTrigger>
+                    <TabsTrigger value="custom-jobs">Custom Job Roles</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="standard-jobs">
+                    <JobSelector 
+                      selectedJob={selectedJob} 
+                      onJobChange={(job) => setSelectedJob(job)} 
+                    />
+                  </TabsContent>
+                  
+                  <TabsContent value="custom-jobs">
+                    <JobRolesManager onSelectJob={handleSelectCustomJob} />
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+            
+            <Button 
+              type="submit" 
+              className="w-full" 
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <span className="flex items-center">
+                  <LoadingSpinner  />
+                  Processing...
+                </span>
+              ) : (
+                "Check Resume"
+              )}
+            </Button>
+            
+            {isLoading && (
+              <div className="space-y-2">
+                <Progress value={currentStep * 16.67} className="h-2" />
+                <p className="text-sm text-center">
+                  {[
+                    "Parsing resume...",
+                    "Extracting information...",
+                    "Analyzing against job requirements...",
+                    "Calculating match score...",
+                    "Generating feedback...",
+                    "Creating improved version..."
+                  ][currentStep - 1]}
+                </p>
+              </div>
+            )}
+          </form>
+        </div>
+        
+        <div>
+          {result ? (
+            <Tabs defaultValue="score" className="w-full">
+              <TabsList className="w-full">
+                <TabsTrigger value="score">Match Score</TabsTrigger>
+                <TabsTrigger value="feedback">Feedback</TabsTrigger>
+                <TabsTrigger value="improved">Improved Resume</TabsTrigger>
+                <TabsTrigger value="parsed">Parsed Data</TabsTrigger>
+              </TabsList>
+              <TabsContent value="score">
+                <ResumeScore score={result.score} jobData={result.job_data} />
+              </TabsContent>
+              <TabsContent value="feedback">
+                <FeedbackCard feedback={result.feedback} />
+              </TabsContent>
+              <TabsContent value="improved">
+                <ImprovedResume content={result.improved_resume} />
+              </TabsContent>
+              <TabsContent value="parsed">
+                <ParsedResume data={result.parsed_resume} />
+              </TabsContent>
+            </Tabs>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Resume Analysis</CardTitle>
+                <CardDescription>
+                  Upload your resume and select a job to get started
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="min-h-[300px] flex items-center justify-center">
+                <div className="text-center text-muted-foreground">
+                  <p>Your resume analysis results will appear here</p>
+                  <Button
+                    variant="link"
+                    onClick={() => {
+                      const demoResult = getMockResponse("job1");
+                      setSelectedJob("job1");
+                      demoResult.then(data => setResult(data));
+                    }}
+                  >
+                    See Demo Result
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
-
-      {!result ? (
-        <Card className="w-full max-w-2xl mx-auto">
-          <CardHeader>
-            <CardTitle>Resume Analysis</CardTitle>
-            <CardDescription>
-              Upload your resume and select a job to analyze against
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
-              <ResumeUploader selectedFile={selectedFile} setSelectedFile={setSelectedFile} />
-              <JobSelector selectedJob={selectedJob} setSelectedJob={setSelectedJob} />
-            </form>
-          </CardContent>
-          <CardFooter className="flex justify-end">
-            <Button onClick={handleSubmit} disabled={isLoading || !selectedFile}>
-              {isLoading ? <LoadingSpinner /> : "Analyze Resume"}
-            </Button>
-          </CardFooter>
-        </Card>
-      ) : (
-        <div className="space-y-8">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold">
-              Results for: {result.job_data.title}
-            </h2>
-            <Button variant="outline" onClick={resetForm}>
-              Start New Analysis
-            </Button>
-          </div>
-
-          <ResumeScore score={result.score} />
-
-          <Tabs defaultValue="feedback" className="w-full">
-            <TabsList className="grid grid-cols-4 w-full max-w-2xl mx-auto">
-              <TabsTrigger value="feedback">Feedback</TabsTrigger>
-              <TabsTrigger value="improved">Improved Resume</TabsTrigger>
-              <TabsTrigger value="parsed">Parsed Data</TabsTrigger>
-              <TabsTrigger value="job">Job Requirements</TabsTrigger>
-            </TabsList>
-            <TabsContent value="feedback" className="mt-6">
-              <FeedbackCard feedback={result.feedback} />
-            </TabsContent>
-            <TabsContent value="improved" className="mt-6">
-              <ImprovedResume resumeText={result.improved_resume} />
-            </TabsContent>
-            <TabsContent value="parsed" className="mt-6">
-              <ParsedResume resume={result.parsed_resume} />
-            </TabsContent>
-            <TabsContent value="job" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{result.job_data.title}</CardTitle>
-                  <CardDescription>Job requirements and qualifications</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="font-medium mb-2">Required Skills</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {result.job_data.required_skills.map((skill: string) => (
-                          <span 
-                            key={skill} 
-                            className={`px-2 py-1 rounded-md text-sm ${
-                              result.score.matching_skills.includes(skill)
-                                ? "bg-green-100 text-green-800"
-                                : "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="font-medium mb-2">Experience</h3>
-                      <p>{result.job_data.min_years_experience} years minimum</p>
-                    </div>
-                    <div>
-                      <h3 className="font-medium mb-2">Education</h3>
-                      <p>{result.job_data.min_education}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-      )}
-
-      {isLoading && (
-        <div className="fixed inset-0 bg-background/80 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle>Analyzing Your Resume</CardTitle>
-              <CardDescription>
-                Please wait while our AI agents process your resume
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Progress value={(currentStep / 6) * 100} className="h-2" />
-              <p className="text-center text-sm text-muted-foreground">
-                {[
-                  "Parsing resume...",
-                  "Extracting information...",
-                  "Analyzing against job requirements...",
-                  "Calculating match score...",
-                  "Generating feedback...",
-                  "Creating improved version...",
-                ][currentStep - 1] || "Processing..."}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 };

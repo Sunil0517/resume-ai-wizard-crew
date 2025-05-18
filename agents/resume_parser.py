@@ -1,4 +1,3 @@
-
 """
 ResumeParser Agent for Crew AI Resume Checker
 
@@ -24,6 +23,13 @@ class ResumeParser:
     def __init__(self):
         """Initialize the ResumeParser agent."""
         self.supported_formats = ['.pdf', '.docx']
+        # Resume validation keywords
+        self.resume_indicators = [
+            "experience", "education", "skills", "work", "employment", 
+            "job", "career", "professional", "certification", "resume", "cv",
+            "curriculum vitae", "qualification", "objective", "summary",
+            "contact", "reference", "achievement", "project", "volunteer"
+        ]
         
     def load_resume(self, file_path: str) -> Dict[str, Any]:
         """
@@ -85,11 +91,54 @@ class ResumeParser:
             else:
                 raise ValueError(f"Unsupported format for text extraction: {file_format}")
             
+            # Validate if the document appears to be a resume
+            self.validate_resume_content(text)
+            
             return text
         finally:
             # Clean up temp file
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
+    
+    def validate_resume_content(self, text: str) -> bool:
+        """
+        Validate if the document content appears to be a resume.
+        
+        Args:
+            text: Extracted text from document
+            
+        Returns:
+            True if valid resume, raises ValueError otherwise
+        """
+        text_lower = text.lower()
+        
+        # Check if the text has minimum length for a resume
+        if len(text) < 200:
+            raise ValueError("Document is too short to be a valid resume")
+        
+        # Check for resume indicator keywords
+        indicator_count = sum(1 for indicator in self.resume_indicators if indicator in text_lower)
+        
+        # Document should contain at least 3 resume indicators to be considered valid
+        if indicator_count < 3:
+            raise ValueError(
+                "The uploaded document does not appear to be a resume. "
+                "Please upload a document containing education, work experience, and skills sections."
+            )
+        
+        # Check for typical resume structure (at least some sections)
+        has_experience = any(exp in text_lower for exp in ["experience", "work", "employment", "job history"])
+        has_education = any(edu in text_lower for edu in ["education", "academic", "university", "college", "degree"])
+        has_skills = any(skill in text_lower for skill in ["skills", "competencies", "expertise"])
+        
+        # Minimum structure requirements
+        if not (has_experience or has_education or has_skills):
+            raise ValueError(
+                "The document is missing key resume sections. "
+                "A proper resume should include details about experience, education, or skills."
+            )
+            
+        return True
     
     def _extract_from_pdf(self, file_path: str) -> str:
         """Extract text from PDF file."""

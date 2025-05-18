@@ -1,4 +1,3 @@
-
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
@@ -10,10 +9,18 @@ interface ScoreProps {
     education_score: number;
     matching_skills: string[];
     missing_skills: string[];
+    analysis?: string;
+  };
+  jobData: {
+    id: string;
+    title: string;
+    required_skills: string[];
+    min_years_experience: number;
+    min_education: string;
   };
 }
 
-export const ResumeScore = ({ score }: ScoreProps) => {
+export const ResumeScore = ({ score, jobData }: ScoreProps) => {
   // Helper to determine score color
   const getScoreColor = (value: number) => {
     if (value >= 0.8) return "bg-green-500";
@@ -31,6 +38,13 @@ export const ResumeScore = ({ score }: ScoreProps) => {
 
   return (
     <Card className="p-6">
+      <div className="mb-4">
+        <h3 className="text-lg font-medium">Match Score for {jobData.title}</h3>
+        {score.analysis && (
+          <p className="text-sm text-muted-foreground mt-1">{score.analysis}</p>
+        )}
+      </div>
+      
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
         <div className="w-full md:w-1/3">
           <div className="text-center">
