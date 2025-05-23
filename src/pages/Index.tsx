@@ -5,31 +5,92 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { ResumeUploader } from "@/components/ResumeUploader";
-import { JobSelector } from "@/components/JobSelector";
 import { ResumeScore } from "@/components/ResumeScore";
 import { FeedbackCard } from "@/components/FeedbackCard";
 import { ImprovedResume } from "@/components/ImprovedResume";
 import { ParsedResume } from "@/components/ParsedResume";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import JobRolesManager from "@/components/JobRolesManager";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { CheckCircle2, Circle, ArrowRight } from "lucide-react";
+
+// Processing steps for the modal
+const PROCESS_STEPS = [
+  {
+    title: "Parsing resume",
+    description: "Extracting text content from your uploaded document"
+  },
+  {
+    title: "Extracting information",
+    description: "Identifying key details like skills, experience, and education"
+  },
+  {
+    title: "Analyzing against requirements",
+    description: "Comparing your resume against the job requirements"
+  },
+  {
+    title: "Calculating match score",
+    description: "Determining how well your resume matches the job"
+  },
+  {
+    title: "Generating feedback",
+    description: "Creating personalized improvement suggestions"
+  },
+  {
+    title: "Creating improved version",
+    description: "Building an optimized version of your resume"
+  }
+];
+
+// Create a fetch with timeout function
+const fetchWithTimeout = async (url, options, timeout = 30000) => {
+  const controller = new AbortController();
+  const signal = controller.signal;
+  
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, { ...options, signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+};
 
 const Index = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedJob, setSelectedJob] = useState<string>("job1");
+  const [selectedJob, setSelectedJob] = useState<string>("custom");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [result, setResult] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<string>("standard-jobs");
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
+  const [customJobData, setCustomJobData] = useState<any>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!selectedFile) {
       toast({
-        title: "Error",
-        description: "Please upload a resume file",
+        title: "No Resume Selected",
+        description: "Please upload a resume file before checking",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!customJobData) {
+      toast({
+        title: "Job Requirements Missing",
+        description: "Please fill in the job requirements first",
         variant: "destructive",
       });
       return;
@@ -41,161 +102,111 @@ const Index = () => {
     // Create form data
     const formData = new FormData();
     formData.append("resume", selectedFile);
-    formData.append("job_id", selectedJob);
-
+    formData.append("job_title", customJobData.title);
+    formData.append("job_description", customJobData.description || "");
+    formData.append("required_skills", customJobData.required_skills.join(", "));
+    formData.append("min_years_experience", customJobData.min_years_experience.toString());
+    formData.append("min_education", customJobData.min_education);
+    
+    // Progress update promise - will show steps regardless of API response
+    const progressPromise = updateProgressSteps();
+    
     try {
-      // Determine which API endpoint to use based on job ID source
-      const endpoint = selectedJob.startsWith("custom-") ? "/api/check-resume" : "/api/check-resume";
+      // Real API endpoint
+      const endpoint = "/api/analyze-resume-with-requirements";
       
-      // In a real application, make the actual API call
-      // const response = await fetch(endpoint, {
-      //   method: "POST",
-      //   body: formData,
-      // });
-      // const data = await response.json();
-
-      // Simulate processing time with steps
-      await simulateProcessing();
+      // Make the actual API request with timeout (60 seconds)
+      const response = await fetchWithTimeout(endpoint, {
+        method: 'POST',
+        body: formData,
+      }, 60000);
       
-      // Mock response data
-      const mockData = await getMockResponse(selectedJob);
+      if (!response.ok) {
+        // Try to get error details from response
+        let errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const errorData = await response.json();
+            if (errorData.detail) {
+              errorMessage = errorData.detail;
+            }
+          } else {
+            // If not JSON, try to get text response
+            const textError = await response.text();
+            if (textError) {
+              errorMessage += ` - ${textError.substring(0, 100)}${textError.length > 100 ? '...' : ''}`;
+            }
+          }
+        } catch (parseError) {
+          console.error("Error parsing error response:", parseError);
+        }
+        throw new Error(errorMessage);
+      }
       
-      setResult(mockData);
+      // Check content type
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error(`Expected JSON response but got: ${contentType}`);
+      }
+      
+      // Get response text first for debugging
+      const responseText = await response.text();
+      
+      // Try parsing the JSON
+      let realData;
+      try {
+        realData = JSON.parse(responseText);
+      } catch (jsonError) {
+        console.error("JSON parsing error:", jsonError);
+        console.error("Raw response:", responseText);
+        throw new Error(`Failed to parse JSON response: ${jsonError.message}`);
+      }
+      
+      // Ensure we have complete data structure
+      if (!realData || !realData.parsed_resume || !realData.score) {
+        console.error("Incomplete response data:", realData);
+        throw new Error("Incomplete data received from server");
+      }
+      
+      // Update the result with the real data
+      setResult(realData);
       toast({
         title: "Success!",
         description: "Your resume has been analyzed",
       });
     } catch (error) {
       console.error("Error processing resume:", error);
+      let errorMessage = "Failed to process your resume. Please try again.";
+      
+      if (error.name === 'AbortError') {
+        errorMessage = "Request timed out. The server took too long to respond.";
+      } else if (typeof error === 'object' && error !== null) {
+        errorMessage = error.message || errorMessage;
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to process your resume. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
+      // Wait for progress steps to complete for better UX
+      await progressPromise;
       setIsLoading(false);
       setCurrentStep(0);
     }
   };
 
-  const simulateProcessing = async () => {
-    // Simulate processing steps
-    const steps = [
-      "Parsing resume...",
-      "Extracting information...",
-      "Analyzing against job requirements...",
-      "Calculating match score...",
-      "Generating feedback...",
-      "Creating improved version...",
-    ];
-
-    for (let i = 0; i < steps.length; i++) {
+  // Update progress steps while waiting for API response
+  const updateProgressSteps = async () => {
+    // Update steps with realistic timing based on processing complexity
+    const stepDurations = [1500, 2000, 3000, 1500, 2500, 2500]; // milliseconds per step
+    
+    for (let i = 0; i < PROCESS_STEPS.length; i++) {
       setCurrentStep(i + 1);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, stepDurations[i]));
     }
-  };
-
-  const getMockResponse = async (jobId: string) => {
-    // Mock job data
-    const jobs: Record<string, any> = {
-      job1: {
-        id: "job1",
-        title: "Senior Software Engineer",
-        required_skills: ["Python", "JavaScript", "React", "AWS", "Docker", "Kubernetes"],
-        min_years_experience: 5,
-        min_education: "Bachelor's degree"
-      },
-      job2: {
-        id: "job2",
-        title: "Data Scientist",
-        required_skills: ["Python", "SQL", "Machine Learning", "Pandas", "PyTorch", "Statistics"],
-        min_years_experience: 3,
-        min_education: "Master's degree"
-      },
-      job3: {
-        id: "job3",
-        title: "Product Manager",
-        required_skills: ["Agile", "JIRA", "User Stories", "Roadmap Planning", "Stakeholder Management"],
-        min_years_experience: 4,
-        min_education: "Bachelor's degree"
-      }
-    };
-
-    // Mock parsed resume (would come from backend)
-    const parsedResume = {
-      name: "Alex Johnson",
-      contact_info: {
-        email: "alex.johnson@example.com",
-        phone: "(555) 123-4567",
-        linkedin: "linkedin.com/in/alexjohnson",
-        location: "San Francisco, CA"
-      },
-      education: [
-        {
-          degree: "Bachelor of Science",
-          institution: "University of California, Berkeley",
-          date_range: "2014 - 2018",
-          field_of_study: "Computer Science"
-        }
-      ],
-      skills: ["Python", "JavaScript", "React", "Node.js", "Git", "SQL", "Agile"],
-      experience: [
-        {
-          title: "Software Engineer",
-          company: "Tech Solutions Inc.",
-          date_range: "2018 - 2021",
-          description: "Developed and maintained web applications using React and Node.js.\nCollaborated with cross-functional teams to implement new features.\nImproved application performance by 30% through code optimization."
-        },
-        {
-          title: "Junior Developer",
-          company: "StartUp Co",
-          date_range: "2016 - 2018",
-          description: "Built and tested features for mobile applications.\nParticipated in code reviews and team meetings.\nAssisted in deploying applications to production environments."
-        }
-      ]
-    };
-
-    // Generate score based on selected job
-    let score;
-    if (jobId === "job1") {
-      score = {
-        overall_score: 0.72,
-        skill_match_score: 0.65,
-        experience_score: 0.60,
-        education_score: 1.0,
-        matching_skills: ["Python", "JavaScript", "React"],
-        missing_skills: ["AWS", "Docker", "Kubernetes"],
-        extra_skills: ["Node.js", "Git", "SQL", "Agile"]
-      };
-    } else if (jobId === "job2") {
-      score = {
-        overall_score: 0.51,
-        skill_match_score: 0.33,
-        experience_score: 0.40,
-        education_score: 0.90,
-        matching_skills: ["Python", "SQL"],
-        missing_skills: ["Machine Learning", "Pandas", "PyTorch", "Statistics"],
-        extra_skills: ["JavaScript", "React", "Node.js", "Git", "Agile"]
-      };
-    } else {
-      score = {
-        overall_score: 0.68,
-        skill_match_score: 0.60,
-        experience_score: 0.55,
-        education_score: 0.95,
-        matching_skills: ["Agile"],
-        missing_skills: ["JIRA", "User Stories", "Roadmap Planning", "Stakeholder Management"],
-        extra_skills: ["Python", "JavaScript", "React", "Node.js", "Git", "SQL"]
-      };
-    }
-
-    return {
-      parsed_resume: parsedResume,
-      job_data: jobs[jobId],
-      score,
-      feedback: `# Resume Review for Alex Johnson\n\n## Overall Score: ${Math.round(score.overall_score * 100)}%\n\n### Score Breakdown:\n- **Skills Match**: ${Math.round(score.skill_match_score * 100)}%\n- **Experience**: ${Math.round(score.experience_score * 100)}%\n- **Education**: ${Math.round(score.education_score * 100)}%\n\n## Resume Strengths\n\n### Key Matching Skills:\n${score.matching_skills.map(skill => `- ${skill}`).join('\n')}\n\n### Experience Highlights:\n- Software Engineer at Tech Solutions Inc.\n- Junior Developer at StartUp Co\n\n### Education Achievements:\n- Bachelor of Science from University of California, Berkeley\n\n## Areas for Improvement\n\n### Missing Key Skills:\n${score.missing_skills.map(skill => `- ${skill}`).join('\n')}\n\n### Skills Gaps:\nYour resume currently shows a ${Math.round(score.skill_match_score * 100)}% match with the required skills for this position. Consider addressing the missing skills listed above.\n\n### Experience Enhancement:\nYour experience level appears to be below the job requirements. Consider highlighting more relevant achievements and quantifiable results.\n\n## ATS Optimization Recommendations\n\n### Content Recommendations:\n- Add these key missing skills that match the job requirements: ${score.missing_skills.slice(0, 3).join(', ')}, and others\n- Reorganize skills section to highlight relevant technical and soft skills that align with the job\n- Quantify achievements with specific metrics and results\n- Use strong action verbs to begin bullet points\n- Focus on achievements rather than responsibilities\n\n### Formatting Recommendations:\n- Use a clean, ATS-friendly format with standard section headings\n- Ensure proper use of keywords from the job description\n- Remove graphics, images, and complex formatting that ATS systems can't parse\n- Use bullet points (not paragraphs) for experience and achievements\n- Keep to a 1-2 page limit depending on experience level\n\n## Next Steps\n\n1. Update your resume using the recommendations above\n2. Tailor your skills section to better match job requirements\n3. Quantify achievements with specific metrics and results\n4. Use keywords from the job description throughout your resume\n5. Ensure your resume is formatted for ATS compatibility\n\n*This review was generated by our AI-powered resume checker to help improve your job application success rate.*`,
-      improved_resume: `# ALEX JOHNSON\n\nalex.johnson@example.com | (555) 123-4567\nlinkedin.com/in/alexjohnson | San Francisco, CA\n\n## PROFESSIONAL SUMMARY\n\nResults-driven software engineer with significant experience in web application development. Proven track record of developing and maintaining web applications using React and Node.js. Skilled in Python, JavaScript, React with growing expertise in AWS, Docker, Kubernetes.\n\n## SKILLS\n\n**Core Skills:** Python, JavaScript, React\n\n**Additional Skills:** Node.js, Git, SQL, Agile\n\n**Developing Skills:** AWS, Docker, Kubernetes\n\n## PROFESSIONAL EXPERIENCE\n\n### SOFTWARE ENGINEER | TECH SOLUTIONS INC.\n*2018 - 2021*\n\n- Developed and maintained web applications using React and Node.js Leveraged Python to deliver measurable results.\n- Collaborated with cross-functional teams to implement new features\n- Improved application performance by 30% through code optimization\n- Implemented CI/CD pipelines to streamline deployment processes\n- Mentored junior developers and conducted code reviews\n\n### JUNIOR DEVELOPER | STARTUP CO\n*2016 - 2018*\n\n- Built and tested features for mobile applications\n- Participated in code reviews and team meetings\n- Assisted in deploying applications to production environments\n- Developed RESTful APIs using Node.js and Express\n- Implemented responsive UI components with React\n\n## EDUCATION\n\n### BACHELOR OF SCIENCE IN COMPUTER SCIENCE\n*University of California, Berkeley | 2014 - 2018*\n\n## TECHNICAL PROFICIENCIES\n\n**Programming:** Python, JavaScript\n**Tools:** Git, SQL\n**Platforms:** React, Node.js\n**Other:** Agile\n\n## CERTIFICATIONS & ADDITIONAL TRAINING\n\n- AWS Certified Developer Associate (In Progress)\n- Docker and Kubernetes Fundamentals (Online Course)\n\n*This resume has been optimized for ATS systems while highlighting the most relevant skills and experiences for the target position.*`
-    };
   };
 
   // Handle selection of a custom job role
@@ -216,68 +227,130 @@ const Index = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div>
           <form ref={formRef} onSubmit={handleSubmit} className="space-y-8">
-            <ResumeUploader 
-              selectedFile={selectedFile} 
-              onFileChange={(file) => setSelectedFile(file)} 
-            />
-            
+            {/* Resume Upload Card */}
             <Card>
               <CardHeader>
-                <CardTitle>Step 2: Select Job</CardTitle>
+                <CardTitle>Upload Your Resume</CardTitle>
                 <CardDescription>
-                  Choose a job to match your resume against
+                  Upload your resume to analyze against job requirements
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs value={activeTab} onValueChange={setActiveTab}>
-                  <TabsList className="w-full">
-                    <TabsTrigger value="standard-jobs">Standard Jobs</TabsTrigger>
-                    <TabsTrigger value="custom-jobs">Custom Job Roles</TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="standard-jobs">
-                    <JobSelector 
-                      selectedJob={selectedJob} 
-                      onJobChange={(job) => setSelectedJob(job)} 
-                    />
-                  </TabsContent>
-                  
-                  <TabsContent value="custom-jobs">
-                    <JobRolesManager onSelectJob={handleSelectCustomJob} />
-                  </TabsContent>
-                </Tabs>
+                <ResumeUploader 
+                  selectedFile={selectedFile} 
+                  onFileChange={(file) => setSelectedFile(file)} 
+                />
               </CardContent>
             </Card>
             
+            {/* Job Requirements Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Job Requirements</CardTitle>
+                <CardDescription>
+                  Define job requirements to match against your resume
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <JobRolesManager 
+                  onSubmitCustomJob={(jobDetails) => {
+                    // Create a custom job data object
+                    const customJobData = {
+                      id: "custom",
+                      title: jobDetails.title,
+                      description: jobDetails.description,
+                      required_skills: jobDetails.requiredSkills,
+                      min_years_experience: jobDetails.minYearsExperience,
+                      min_education: jobDetails.minEducation
+                    };
+                    
+                    // Save the custom job data to state
+                    setCustomJobData(customJobData);
+                    
+                    // Set it as the selected job
+                    setSelectedJob("custom");
+                  }} 
+                />
+              </CardContent>
+            </Card>
+            
+            {/* Analysis Button */}
             <Button 
               type="submit" 
-              className="w-full" 
-              disabled={isLoading}
+              className="w-full py-6 text-lg" 
+              disabled={isLoading || !selectedFile || !customJobData}
             >
               {isLoading ? (
-                <span className="flex items-center">
-                  <LoadingSpinner  />
-                  Processing...
+                <span className="flex items-center justify-center">
+                  <LoadingSpinner className="mr-2" />
+                  <span>Processing...</span>
                 </span>
               ) : (
-                "Check Resume"
+                "Analyse Resume"
               )}
             </Button>
             
             {isLoading && (
-              <div className="space-y-2">
-                <Progress value={currentStep * 16.67} className="h-2" />
-                <p className="text-sm text-center">
-                  {[
-                    "Parsing resume...",
-                    "Extracting information...",
-                    "Analyzing against job requirements...",
-                    "Calculating match score...",
-                    "Generating feedback...",
-                    "Creating improved version..."
-                  ][currentStep - 1]}
-                </p>
-              </div>
+              <Dialog open={isLoading} onOpenChange={(open) => !open && setIsLoading(false)}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="text-center text-xl">Processing Your Resume</DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col space-y-6 py-4">
+                    <div className="relative">
+                      <Progress value={currentStep * 16.67} className="h-2" />
+                      <div className="mt-1 text-right text-xs text-muted-foreground">
+                        Step {currentStep} of 6
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-5 max-h-80 overflow-y-auto pr-2">
+                      {PROCESS_STEPS.map((step, index) => {
+                        const isCompleted = currentStep > index + 1;
+                        const isActive = currentStep === index + 1;
+                        
+                        return (
+                          <div key={index} className={`rounded-lg p-3 ${isActive ? 'bg-primary/10 border border-primary/20' : ''}`}>
+                            <div className="flex items-center gap-3">
+                              <div className="flex-shrink-0">
+                                {isCompleted ? (
+                                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                ) : isActive ? (
+                                  <LoadingSpinner className="h-5 w-5" />
+                                ) : (
+                                  <Circle className="h-5 w-5 text-gray-300" />
+                                )}
+                              </div>
+                              <div className="flex-grow">
+                                <div className={`font-medium ${isActive ? 'text-primary' : isCompleted ? 'text-muted-foreground' : 'text-gray-400'}`}>
+                                  {step.title}
+                                  {isActive && <span className="animate-pulse">...</span>}
+                                </div>
+                                {(isActive || isCompleted) && (
+                                  <div className={`text-xs mt-1 ${isActive ? 'text-primary/80' : 'text-muted-foreground'}`}>
+                                    {step.description}
+                                  </div>
+                                )}
+                              </div>
+                              {(isCompleted || isActive) && (
+                                <div className="w-20 text-right text-xs font-medium">
+                                  <span className={isCompleted ? 'text-green-500' : 'text-primary'}>
+                                    {isCompleted ? 'Completed' : 'In progress'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    <div className="text-center text-sm text-muted-foreground mt-4 bg-muted/50 p-3 rounded-lg">
+                      <p>This might take a moment. We're using AI to analyze your resume against the job requirements.</p>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             )}
           </form>
         </div>
@@ -309,22 +382,12 @@ const Index = () => {
               <CardHeader>
                 <CardTitle>Resume Analysis</CardTitle>
                 <CardDescription>
-                  Upload your resume and select a job to get started
+                  Upload your resume and define job requirements to get started
                 </CardDescription>
               </CardHeader>
               <CardContent className="min-h-[300px] flex items-center justify-center">
                 <div className="text-center text-muted-foreground">
                   <p>Your resume analysis results will appear here</p>
-                  <Button
-                    variant="link"
-                    onClick={() => {
-                      const demoResult = getMockResponse("job1");
-                      setSelectedJob("job1");
-                      demoResult.then(data => setResult(data));
-                    }}
-                  >
-                    See Demo Result
-                  </Button>
                 </div>
               </CardContent>
             </Card>

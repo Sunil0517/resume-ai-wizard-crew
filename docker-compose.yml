@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  resume-ai-wizard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./agents:/app/agents  # For development - allows agent code changes without rebuilding
+    environment:
+      - PYTHONUNBUFFERED=1    # Ensures Python output is sent straight to the terminal
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}  # Pass OpenAI API key from host if available
+    restart: unless-stopped
+    command: python app.py 

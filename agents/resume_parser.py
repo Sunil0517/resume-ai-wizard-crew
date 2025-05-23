@@ -13,6 +13,7 @@ import PyPDF2
 import docx2txt
 import spacy
 from crewai import Agent, Task
+import re
 
 # Load NLP model for entity extraction
 nlp = spacy.load("en_core_web_lg")
@@ -23,12 +24,24 @@ class ResumeParser:
     def __init__(self):
         """Initialize the ResumeParser agent."""
         self.supported_formats = ['.pdf', '.docx']
-        # Resume validation keywords
+        # Resume validation keywords - adding more specific terms to improve accuracy
         self.resume_indicators = [
             "experience", "education", "skills", "work", "employment", 
             "job", "career", "professional", "certification", "resume", "cv",
             "curriculum vitae", "qualification", "objective", "summary",
-            "contact", "reference", "achievement", "project", "volunteer"
+            "contact", "reference", "achievement", "project", "volunteer",
+            # Adding more specific professional terms
+            "responsibilities", "achievements", "technical skills", "soft skills",
+            "languages", "proficient in", "expertise", "proficiency", "background",
+            "career objective", "professional summary", "work history"
+        ]
+        
+        # Common document types that are not resumes
+        self.non_resume_indicators = [
+            "invoice", "receipt", "contract", "agreement", "report", "proposal",
+            "presentation", "memo", "letter", "essay", "thesis", "dissertation",
+            "article", "paper", "whitepaper", "manual", "guide", "handbook",
+            "financial statement", "copyright", "patent", "license"
         ]
         
     def load_resume(self, file_path: str) -> Dict[str, Any]:
@@ -113,14 +126,24 @@ class ResumeParser:
         text_lower = text.lower()
         
         # Check if the text has minimum length for a resume
-        if len(text) < 200:
+        if len(text) < 300:  # Increased minimum length
             raise ValueError("Document is too short to be a valid resume")
         
         # Check for resume indicator keywords
         indicator_count = sum(1 for indicator in self.resume_indicators if indicator in text_lower)
         
-        # Document should contain at least 3 resume indicators to be considered valid
-        if indicator_count < 3:
+        # Check for non-resume document indicators
+        non_resume_count = sum(1 for indicator in self.non_resume_indicators if indicator in text_lower)
+        
+        # If there are more non-resume indicators than resume indicators, reject the document
+        if non_resume_count >= indicator_count:
+            raise ValueError(
+                "The uploaded document appears to be a non-resume document. "
+                "Please upload a proper resume or CV."
+            )
+        
+        # Document should contain at least 4 resume indicators to be considered valid (increased from 3)
+        if indicator_count < 4:
             raise ValueError(
                 "The uploaded document does not appear to be a resume. "
                 "Please upload a document containing education, work experience, and skills sections."
@@ -129,13 +152,20 @@ class ResumeParser:
         # Check for typical resume structure (at least some sections)
         has_experience = any(exp in text_lower for exp in ["experience", "work", "employment", "job history"])
         has_education = any(edu in text_lower for edu in ["education", "academic", "university", "college", "degree"])
-        has_skills = any(skill in text_lower for skill in ["skills", "competencies", "expertise"])
+        has_skills = any(skill in text_lower for skill in ["skills", "competencies", "expertise", "proficient"])
+        has_contact = any(contact in text_lower for contact in ["email", "@", "phone", "contact", "address"])
         
-        # Minimum structure requirements
-        if not (has_experience or has_education or has_skills):
+        # Check for typical resume content patterns (e.g., dates in experience)
+        has_date_patterns = bool(re.search(r'\b(19|20)\d{2}\s*(-|–|to|—|\s)\s*(19|20)\d{2}|present|current\b', text_lower, re.IGNORECASE))
+        
+        # Calculate structure score - need at least 3 sections
+        structure_score = sum([has_experience, has_education, has_skills, has_contact, has_date_patterns])
+        
+        # Minimum structure requirements - need at least 3 sections
+        if structure_score < 3:
             raise ValueError(
-                "The document is missing key resume sections. "
-                "A proper resume should include details about experience, education, or skills."
+                "The document is missing key resume sections or content. "
+                "A proper resume should include details about experience, education, skills, and contact information."
             )
             
         return True
@@ -205,7 +235,6 @@ class ResumeParser:
                 break
                 
         # Extract phone using regex pattern matching (simplified here)
-        import re
         phone_pattern = r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
         phone_matches = re.findall(phone_pattern, text)
         if phone_matches:
@@ -236,7 +265,6 @@ class ResumeParser:
         if edu_section:
             # Extract degrees, institutions, dates using pattern matching
             # This is a simplified implementation
-            import re
             
             # Look for degree patterns
             degree_patterns = [
@@ -331,7 +359,6 @@ class ResumeParser:
         
         if exp_section:
             # Split experience section into potential job entries
-            import re
             
             # Look for date ranges as separators
             date_pattern = r'(19|20)\d{2}\s*(-|to|–|—)\s*(19|20)\d{2}|present|current'
@@ -371,7 +398,6 @@ class ResumeParser:
         # If no common title found, take the first line which might be the title
         first_line = text.strip().split('\n')[0]
         # Remove the date range if it's in the first line
-        import re
         date_pattern = r'(19|20)\d{2}\s*(-|to|–|—)\s*(19|20)\d{2}|present|current'
         clean_line = re.sub(date_pattern, '', first_line, flags=re.IGNORECASE).strip()
         

@@ -67,11 +67,13 @@ class ResumeScorer:
         self._validate_input_data(resume_data, job_data)
         
         # Extract relevant information from resume and job data
-        resume_skills = set(s.lower() for s in resume_data.get("skills", []))
-        job_skills = set(s.lower() for s in job_data.get("required_skills", []))
+        resume_skills = [s.lower() for s in resume_data.get("skills", [])]
+        job_skills = [s.lower() for s in job_data.get("required_skills", [])]
         
         # Calculate skill match score (40% weight)
-        skill_match_score = self._calculate_skill_match(resume_skills, job_skills)
+        skill_match_score, matching_skills, missing_skills, extra_skills = self._calculate_skill_match(
+            resume_skills, job_skills
+        )
         
         # Calculate experience match score (30% weight)
         experience_score = self._calculate_experience_match(
@@ -98,15 +100,15 @@ class ResumeScorer:
             "skill_match_score": round(skill_match_score, 2),
             "experience_score": round(experience_score, 2),
             "education_score": round(education_score, 2),
-            "matching_skills": list(resume_skills.intersection(job_skills)),
-            "missing_skills": list(job_skills - resume_skills),
-            "extra_skills": list(resume_skills - job_skills),
+            "matching_skills": matching_skills,
+            "missing_skills": missing_skills,
+            "extra_skills": extra_skills,
             "analysis": self._generate_score_analysis(
                 skill_match_score, 
                 experience_score, 
                 education_score, 
-                resume_skills.intersection(job_skills),
-                job_skills - resume_skills
+                matching_skills,
+                missing_skills
             )
         }
     
@@ -129,44 +131,134 @@ class ResumeScorer:
         if "title" not in job_data or "required_skills" not in job_data:
             raise ValueError("Job data is missing critical fields (title, required_skills)")
     
-    def _calculate_skill_match(self, resume_skills: set, job_skills: set) -> float:
-        """Calculate skill match score between resume skills and job skills."""
+    def _calculate_skill_match(self, resume_skills: list, job_skills: list) -> tuple:
+        """
+        Calculate skill match score between resume skills and job skills.
+        
+        Args:
+            resume_skills: List of skills from resume (lowercase)
+            job_skills: List of skills from job description (lowercase)
+            
+        Returns:
+            Tuple of (score, matching_skills, missing_skills, extra_skills)
+        """
         if not job_skills:
-            return 0.85  # No skills listed, but don't give perfect score
+            return 0.85, [], [], resume_skills  # No skills listed, but don't give perfect score
             
         if not resume_skills:
-            return 0.0  # No skills extracted from resume
-            
-        # Count matching skills
-        matching_skills = resume_skills.intersection(job_skills)
+            return 0.0, [], job_skills, []  # No skills extracted from resume
         
-        # Core skill match ratio (this is the most important factor)
-        skill_match_ratio = len(matching_skills) / len(job_skills) if job_skills else 0
+        # Use NLP to find similar skills
+        import spacy
+        
+        try:
+            # Try to use a pre-loaded model if available
+            nlp = spacy.load("en_core_web_lg")
+        except:
+            # Fallback to a smaller model that might be available
+            try:
+                nlp = spacy.load("en_core_web_md")
+            except:
+                try:
+                    nlp = spacy.load("en_core_web_sm")
+                except:
+                    # If no model is available, use simple string matching
+                    return self._calculate_skill_match_simple(resume_skills, job_skills)
+        
+        # Create vectors for skills
+        resume_skill_docs = [nlp(skill) for skill in resume_skills]
+        job_skill_docs = [nlp(skill) for skill in job_skills]
+        
+        # Track exact and semantic matches
+        matching_skills = []
+        missing_skills = []
+        extra_skills = []
+        
+        # Check for exact and semantic matches
+        skill_match_count = 0
+        for job_skill_doc in job_skill_docs:
+            job_skill = job_skill_doc.text
+            
+            # Check for exact match first
+            if job_skill.lower() in resume_skills:
+                matching_skills.append(job_skill)
+                skill_match_count += 1
+                continue
+            
+            # Check for semantic similarity
+            max_similarity = 0
+            most_similar_skill = None
+            for resume_skill_doc in resume_skill_docs:
+                if len(resume_skill_doc) and len(job_skill_doc):  # Ensure non-empty docs
+                    similarity = resume_skill_doc.similarity(job_skill_doc)
+                    if similarity > max_similarity:
+                        max_similarity = similarity
+                        most_similar_skill = resume_skill_doc.text
+            
+            # If similarity is high enough, count as a match
+            if max_similarity > 0.8 and most_similar_skill:  # High threshold for strong matches
+                matching_skills.append(f"{most_similar_skill} (similar to {job_skill})")
+                skill_match_count += 0.9  # Slightly less value than exact match
+            else:
+                missing_skills.append(job_skill)
+        
+        # Identify extra skills
+        for resume_skill in resume_skills:
+            if resume_skill not in [s.lower() for s in matching_skills]:
+                is_similar = False
+                for job_skill_doc in job_skill_docs:
+                    resume_skill_doc = nlp(resume_skill)
+                    if len(resume_skill_doc) and len(job_skill_doc):  # Ensure non-empty docs
+                        if resume_skill_doc.similarity(job_skill_doc) > 0.8:
+                            is_similar = True
+                            break
+                if not is_similar:
+                    extra_skills.append(resume_skill)
+        
+        # Calculate score components
+        if len(job_skills) > 0:
+            core_match_ratio = skill_match_count / len(job_skills)
+        else:
+            core_match_ratio = 0
         
         # Weight factors
-        core_weight = 0.7  # How much of the score depends on matching required skills
-        breadth_weight = 0.2  # Bonus for having additional relevant skills
-        precision_weight = 0.1  # Penalty for having too many irrelevant skills
+        core_weight = 0.75  # How much of the score depends on matching required skills
+        breadth_weight = 0.15  # Bonus for having additional relevant skills
+        precision_weight = 0.10  # Penalty for having too many irrelevant skills
         
         # Calculate breadth score (bonus for having more relevant skills)
-        # We want a higher score if resume has many matching skills compared to its total skills
-        breadth_score = len(matching_skills) / max(len(resume_skills), 1) if resume_skills else 0
+        breadth_score = min(1.0, skill_match_count / max(len(resume_skills), 1)) if resume_skills else 0
         
         # Calculate precision score (penalty for having too many irrelevant skills)
-        # Lower score if many skills on resume don't match job requirements
-        irrelevant_skills = len(resume_skills - job_skills)
-        precision_score = 1.0 - (irrelevant_skills / max(len(resume_skills) + len(job_skills), 1))
-        precision_score = max(0, precision_score)  # Ensure non-negative
+        irrelevant_skill_ratio = len(extra_skills) / max(len(resume_skills), 1) if resume_skills else 0
+        precision_score = max(0, 1.0 - irrelevant_skill_ratio * 0.5)  # Less aggressive penalty
         
         # Combine scores with weights
         combined_score = (
-            core_weight * skill_match_ratio + 
+            core_weight * core_match_ratio + 
             breadth_weight * breadth_score + 
             precision_weight * precision_score
         )
         
-        # Scale to ensure score is between 0 and 1
-        return min(1.0, max(0.0, combined_score))
+        final_score = min(1.0, max(0.0, combined_score))
+        return final_score, matching_skills, missing_skills, extra_skills
+        
+    def _calculate_skill_match_simple(self, resume_skills: list, job_skills: list) -> tuple:
+        """Simple fallback skill matching when NLP is not available."""
+        # Convert sets for intersection operations
+        resume_skills_set = set(resume_skills)
+        job_skills_set = set(job_skills)
+        
+        # Get matching, missing and extra skills
+        matching_skills = list(resume_skills_set.intersection(job_skills_set))
+        missing_skills = list(job_skills_set - resume_skills_set)
+        extra_skills = list(resume_skills_set - job_skills_set)
+        
+        # Calculate core match ratio
+        core_match_ratio = len(matching_skills) / len(job_skills) if job_skills else 0
+        
+        # Return components
+        return core_match_ratio, matching_skills, missing_skills, extra_skills
     
     def _calculate_experience_match(self, experience: List[Dict[str, Any]], min_years: int) -> float:
         """Calculate experience match score based on years of experience."""
