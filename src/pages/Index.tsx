@@ -1,3 +1,4 @@
+
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription
 } from "@/components/ui/dialog";
 import { CheckCircle2, Circle, ArrowRight } from "lucide-react";
 
@@ -48,7 +50,7 @@ const PROCESS_STEPS = [
 ];
 
 // Create a fetch with timeout function
-const fetchWithTimeout = async (url, options, timeout = 30000) => {
+const fetchWithTimeout = async (url, options, timeout = 60000) => {
   const controller = new AbortController();
   const signal = controller.signal;
   
@@ -102,21 +104,25 @@ const Index = () => {
     // Create form data
     const formData = new FormData();
     formData.append("resume", selectedFile);
-    formData.append("job_title", customJobData.title);
+    formData.append("job_title", customJobData.title || "");
     formData.append("job_description", customJobData.description || "");
-    formData.append("required_skills", customJobData.required_skills.join(", "));
-    formData.append("min_years_experience", customJobData.min_years_experience.toString());
-    formData.append("min_education", customJobData.min_education);
+    formData.append("required_skills", (customJobData.required_skills || []).join(", "));
+    formData.append("min_years_experience", String(customJobData.min_years_experience || 0));
+    formData.append("min_education", customJobData.min_education || "Bachelor's degree");
     
     // Progress update promise - will show steps regardless of API response
     const progressPromise = updateProgressSteps();
     
     try {
-      // Real API endpoint
-      const endpoint = "/api/analyze-resume-with-requirements";
+      console.log("Submitting form data:", {
+        job_title: customJobData.title,
+        required_skills: (customJobData.required_skills || []).join(", "),
+        min_years_experience: customJobData.min_years_experience,
+        min_education: customJobData.min_education
+      });
       
       // Make the actual API request with timeout (60 seconds)
-      const response = await fetchWithTimeout(endpoint, {
+      const response = await fetchWithTimeout("/api/analyze-resume-with-requirements", {
         method: 'POST',
         body: formData,
       }, 60000);
@@ -254,14 +260,14 @@ const Index = () => {
               <CardContent>
                 <JobRolesManager 
                   onSubmitCustomJob={(jobDetails) => {
-                    // Create a custom job data object
+                    // Create a custom job data object with default values for any missing fields
                     const customJobData = {
                       id: "custom",
-                      title: jobDetails.title,
-                      description: jobDetails.description,
-                      required_skills: jobDetails.requiredSkills,
-                      min_years_experience: jobDetails.minYearsExperience,
-                      min_education: jobDetails.minEducation
+                      title: jobDetails.title || "Job Title",
+                      description: jobDetails.description || "",
+                      required_skills: jobDetails.requiredSkills || [],
+                      min_years_experience: parseInt(String(jobDetails.minYearsExperience || 0)),
+                      min_education: jobDetails.minEducation || "Bachelor's degree"
                     };
                     
                     // Save the custom job data to state
@@ -295,6 +301,9 @@ const Index = () => {
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle className="text-center text-xl">Processing Your Resume</DialogTitle>
+                    <DialogDescription className="text-center">
+                      Please wait while we analyze your resume
+                    </DialogDescription>
                   </DialogHeader>
                   <div className="flex flex-col space-y-6 py-4">
                     <div className="relative">
